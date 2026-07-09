@@ -1,5 +1,3 @@
-
-
 from flask import Flask, render_template, jsonify, request
 from datetime import datetime, timedelta
 import json
@@ -8,12 +6,13 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from decimal import Decimal
 import os
+import traceback
 
 application = Flask(__name__)
 app = application
 
 # Configuration
-REFRESH_INTERVAL = 5  # seconds
+REFRESH_INTERVAL = 5
 
 # DynamoDB Configuration
 DYNAMODB_TABLE = 'dynamodb-x24315851'
@@ -28,7 +27,7 @@ except Exception as e:
     print(f"Failed to connect to DynamoDB: {e}")
     table = None
 
-# SNS Configuration (optional)
+# SNS Configuration
 SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:252250993625:sns-x24315851'
 try:
     sns_client = boto3.client('sns', region_name=AWS_REGION)
@@ -37,7 +36,6 @@ except Exception as e:
     print(f"Failed to initialize SNS: {e}")
     sns_client = None
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -118,7 +116,6 @@ def fetch_from_dynamodb(vehicle_id=None, limit=100):
                 ScanIndexForward=False
             )
         else:
-            # Scan with limit
             response = table.scan(Limit=limit)
         
         items = response.get('Items', [])
@@ -154,12 +151,10 @@ def determine_system_status(data):
         if value is not None:
             thresholds = CRITICAL_THRESHOLDS.get(sensor, {})
             
-            # Check critical
             if 'min' in thresholds and value < thresholds['min']:
                 critical_sensors.append(sensor)
             elif 'max' in thresholds and value > thresholds['max']:
                 critical_sensors.append(sensor)
-            # Check warning
             elif 'warning_min' in thresholds and value < thresholds['warning_min']:
                 warning_sensors.append(sensor)
             elif 'warning_max' in thresholds and value > thresholds['warning_max']:
@@ -200,7 +195,6 @@ def get_data():
     vehicle_id = request.args.get('vehicle_id')
     limit = request.args.get('limit', 100, type=int)
     
-    # Fetch from DynamoDB
     data, error = fetch_from_dynamodb(vehicle_id, limit)
     
     if error:
@@ -229,17 +223,18 @@ def get_data():
         record['status'] = status
         record['status_message'] = status_message
     
-    # Determine overall status
     overall_status, overall_message, _, latest_data = determine_system_status(data)
     
-    return jsonify({
+    response_data = {
         "success": True,
         "data": filtered,
         "total_records": len(filtered),
         "overall_status": overall_status,
         "overall_status_message": overall_message,
         "timestamp": datetime.now().isoformat()
-    })
+    }
+    
+    return jsonify(response_data)
 
 @app.route("/api/vehicles")
 def get_vehicles():
